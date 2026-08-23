@@ -80,7 +80,7 @@ function App() {
 
       if (response.status >= 500) {
         throw new Error(
-          "The server is temporarily unavailable. Please try again later."
+          "The server is temporarily unavailable. The AI service has temporarily reached its usage limit.Please try again later."
         );
       }
 
@@ -92,7 +92,7 @@ function App() {
     // Handle API errors returned as JSON
     if (!response.ok) {
       throw new Error(
-        data?.message || "Unable to process the document."
+        data?.message || "Unable to process the document.The AI service has temporarily reached its usage limit."
       );
     }
 
@@ -104,7 +104,7 @@ function App() {
 
     setError(
       err.message ||
-      "Something went wrong while processing your document."
+      "Something went wrong while processing your document.The AI service has temporarily reached its usage limit."
     );
   } finally {
     setLoading(false);

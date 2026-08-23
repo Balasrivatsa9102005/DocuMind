@@ -149,8 +149,7 @@ def upload_document():
                 return jsonify({
                     "status": "error",
                     "message": (
-                        "The AI service is temporarily unavailable. API may be down or rate-limited. "
-                        "Please try again later."
+                        "The AI service is temporarily unavailable. The AI service has temporarily reached its usage limit.Please try again later."
                     )
                 }), 502
 
@@ -170,7 +169,7 @@ def upload_document():
             "status": "error",
             "message": (
                 "Unable to process the document right now. "
-                "Please try again."
+                "The AI service has temporarily reached its usage limit.Please try again later."
             )
         }), 500
 
