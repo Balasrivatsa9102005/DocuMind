@@ -1,0 +1,8 @@
+Flask
+Flask-Cors
+requests
+python-dotenv
+PyMuPDF
+python-docx
+pytesseract
+Pillow

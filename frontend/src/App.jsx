@@ -15,6 +15,7 @@ import {
 
 function App() {
   const [file, setFile] = useState(null);
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
   const [summaryLength, setSummaryLength] = useState("medium");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -52,7 +53,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/api/documents/upload",
+        `${apiBaseUrl}/api/documents/upload`,
         {
           method: "POST",
           body: formData,

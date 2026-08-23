@@ -1,6 +1,13 @@
-import requests
+import os
+from pathlib import Path
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+import requests
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+OLLAMA_URL = os.environ["OLLAMA_URL"]
+MODEL_NAME = os.environ["OLLAMA_MODEL"]
 
 prompt = """
 Summarize the following text in 3 bullet points.
@@ -14,12 +21,10 @@ fraud detection, computer vision, and natural language processing.
 response = requests.post(
     OLLAMA_URL,
     json={
-        "model": "gemma3:4b",
+        "model": MODEL_NAME,
         "prompt": prompt,
         "stream": False
     }
 )
-
 print("Status:", response.status_code)
-print("Response:")
 print(response.json()["response"])

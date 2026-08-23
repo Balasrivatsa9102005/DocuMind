@@ -1,8 +1,13 @@
+import os
+from pathlib import Path
+
 import requests
+from dotenv import load_dotenv
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-MODEL_NAME = "gemma3:4b"
+OLLAMA_URL = os.environ["OLLAMA_URL"]
+MODEL_NAME = os.environ["OLLAMA_MODEL"]
 
 # Keep chunks reasonably small for the 4096-token context
 CHUNK_SIZE = 1200
