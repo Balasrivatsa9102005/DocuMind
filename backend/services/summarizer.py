@@ -1,6 +1,7 @@
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
+
 MODEL_NAME = "gemma3:4b"
 
 # Keep chunks reasonably small for the 4096-token context
@@ -25,7 +26,6 @@ def ask_ollama(prompt):
 
 def split_text(text, chunk_size=CHUNK_SIZE):
     """Split document text into smaller chunks."""
-
     words = text.split()
     chunks = []
 
@@ -36,42 +36,29 @@ def split_text(text, chunk_size=CHUNK_SIZE):
 
 
 def summarize_chunk(chunk, length):
-
     instructions = {
         "short": """
-Summarize this section briefly.
+Create a concise summary of this section.
 
 Return:
-SUMMARY:
-One short paragraph.
-
-KEY POINTS:
-- 3 important points
-- Use concise bullet points
+- One short paragraph covering the main idea.
+- 3 concise key points as bullet points.
 """,
 
         "medium": """
-Summarize this section clearly.
+Create a clear summary of this section.
 
 Return:
-SUMMARY:
-One clear paragraph covering the main ideas.
-
-KEY POINTS:
-- 5 important points
-- Use concise bullet points
+- One paragraph covering the main ideas.
+- 5 concise key points as bullet points.
 """,
 
         "long": """
-Summarize this section in detail.
+Create a detailed summary of this section.
 
 Return:
-SUMMARY:
-One detailed paragraph covering the major ideas and important details.
-
-KEY POINTS:
-- 7 important points
-- Use concise bullet points
+- One or two paragraphs covering the major ideas and important details.
+- 7 concise key points as bullet points.
 """
     }
 
@@ -86,7 +73,9 @@ Rules:
 - Do not add information from outside the text.
 - Preserve important facts, names, numbers, dates and conclusions.
 - Do not mention that you are summarizing a section.
+- Do not write headings such as "SUMMARY" or "KEY POINTS".
 - Do not add unnecessary explanations.
+- Use proper paragraphs and bullet points.
 
 TEXT:
 
@@ -97,7 +86,6 @@ TEXT:
 
 
 def summarize_text(text, length="medium"):
-
     if not text or not text.strip():
         return "No text was provided."
 
@@ -108,14 +96,13 @@ def summarize_text(text, length="medium"):
     summaries = []
 
     for i, chunk in enumerate(chunks):
-
         print(f"Summarizing chunk {i + 1}/{len(chunks)}...")
 
         summary = summarize_chunk(chunk, length)
 
         summaries.append(summary)
 
-    # If there is only one chunk
+    # If there is only one chunk, return its summary directly
     if len(summaries) == 1:
         return summaries[0]
 
@@ -124,26 +111,38 @@ def summarize_text(text, length="medium"):
         for i, summary in enumerate(summaries)
     )
 
+    point_count = {
+        "short": 3,
+        "medium": 5,
+        "long": 7
+    }.get(length, 5)
+
+    paragraph_instruction = {
+        "short": "Write one concise paragraph.",
+        "medium": "Write one or two clear paragraphs.",
+        "long": "Write two or three detailed paragraphs."
+    }.get(length, "Write one or two clear paragraphs.")
+
     final_prompt = f"""
 You are a document summarization assistant.
 
-Create a final summary from the section summaries below.
+Create the final response from the section summaries below.
 
-Return exactly this structure:
+The frontend already displays the heading "Summary".
 
-SUMMARY:
+Therefore, DO NOT:
+- Add a "Summary" heading.
+- Add a "SUMMARY:" heading.
+- Add a "Key Points" heading.
+- Add a "KEY POINTS:" heading.
+- Say "Here is the summary".
+- Mention section summaries.
+- Add unnecessary commentary.
 
-Write 1-3 clear paragraphs explaining the overall document.
+Instead, return ONLY:
 
-KEY POINTS:
-
-- Important point 1
-- Important point 2
-- Important point 3
-- Important point 4
-- Important point 5
-- Important point 6
-- Important point 7
+1. {paragraph_instruction}
+2. Then provide exactly {point_count} important points using Markdown bullet points.
 
 Rules:
 - Use only information contained in the section summaries.
@@ -151,10 +150,9 @@ Rules:
 - Do not add outside information.
 - Remove repeated information.
 - Preserve important facts, names, numbers, dates and conclusions.
-- Do not mention the section summaries.
-- Do not add unnecessary commentary.
-- Use proper paragraphs and bullet points.
-- Keep the response clear and readable.
+- Keep the response clear, natural and readable.
+- Use proper paragraphs.
+- Use Markdown bullet points for the important points.
 
 SECTION SUMMARIES:
 
