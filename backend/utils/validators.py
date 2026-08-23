@@ -1,9 +1,6 @@
 ALLOWED_EXTENSIONS = {
     "pdf",
-    "docx",
-    "png",
-    "jpg",
-    "jpeg"
+    "docx"
 }
 
 MAX_FILE_SIZE = 16 * 1024 * 1024

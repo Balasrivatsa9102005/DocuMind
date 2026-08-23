@@ -224,7 +224,7 @@ function App() {
                   or click to browse
                 </p>
                 <p className="text-xs text-blue-100/60 mt-5 bg-blue-900/30 px-5 py-2 rounded-full border border-blue-400/25">
-                  PDF · DOCX · PNG · JPG · JPEG
+                  · PDF · DOCX  
                 </p>
                 <input
                   id="file-upload"
