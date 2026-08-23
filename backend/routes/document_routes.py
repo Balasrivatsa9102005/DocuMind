@@ -1,21 +1,23 @@
 from pathlib import Path
 
 from flask import Blueprint, request, jsonify
+from requests.exceptions import HTTPError
 
 from utils.validators import is_allowed_file, get_file_extension
 from services.pdf_extractor import extract_text_from_pdf
-from services.ocr_service import extract_text_from_image
 from services.docx_extractor import extract_text_from_docx
 from services.summarizer import summarize_text
 
 
 document_bp = Blueprint("document", __name__)
+
 UPLOAD_FOLDER = Path(__file__).resolve().parent.parent / "uploads"
 
 
 @document_bp.route("/api/documents/upload", methods=["POST"])
 def upload_document():
 
+    # Check file
     if "file" not in request.files:
         return jsonify({
             "status": "error",
@@ -30,12 +32,17 @@ def upload_document():
             "message": "No file selected"
         }), 400
 
-    if not is_allowed_file(file.filename):
+    # Only PDF and DOCX are supported on deployment
+    filename = Path(file.filename).name
+    extension = get_file_extension(filename)
+
+    if extension not in {"pdf", "docx"}:
         return jsonify({
             "status": "error",
-            "message": "Unsupported file type. Allowed formats: PDF, DOCX, PNG, JPG, JPEG"
+            "message": "Unsupported file type. Please upload a PDF or DOCX file."
         }), 400
 
+    # Summary length
     summary_length = request.form.get("summary_length", "medium")
 
     allowed_lengths = {"short", "medium", "long"}
@@ -46,87 +53,132 @@ def upload_document():
             "message": "Invalid summary length. Choose short, medium, or long."
         }), 400
 
+    # Create upload directory
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-    filename = Path(file.filename).name
     file_path = UPLOAD_FOLDER / filename
 
-    file.save(file_path)
+    try:
+        # Save uploaded file
+        file.save(file_path)
 
-    extension = get_file_extension(filename)
+        # =========================================================
+        # PDF
+        # =========================================================
+        if extension == "pdf":
 
-    # PDF
-    if extension == "pdf":
+            pages = extract_text_from_pdf(file_path)
 
-        pages = extract_text_from_pdf(file_path)
+            text = "\n\n".join(
+                page["text"] for page in pages
+            )
 
-        text = "\n\n".join(
-            page["text"] for page in pages
-        )
+            if not text.strip():
+                return jsonify({
+                    "status": "error",
+                    "message": "No text could be extracted from the PDF."
+                }), 400
 
-        if not text.strip():
+            # Generate summary
+            summary = summarize_text(
+                text,
+                summary_length
+            )
+
             return jsonify({
-                "status": "error",
-                "message": "No text could be extracted from the PDF."
-            }), 400
+                "status": "success",
+                "message": "PDF processed and summarized successfully",
+                "filename": filename,
+                "file_type": extension,
+                "pages": len(pages),
+                "summary_length": summary_length,
+                "summary": summary
+            }), 200
 
-        summary = summarize_text(text, summary_length)
+        # =========================================================
+        # DOCX
+        # =========================================================
+        if extension == "docx":
+
+            text = extract_text_from_docx(file_path)
+
+            if not text.strip():
+                return jsonify({
+                    "status": "error",
+                    "message": "No text could be extracted from the DOCX."
+                }), 400
+
+            # Generate summary
+            summary = summarize_text(
+                text,
+                summary_length
+            )
+
+            return jsonify({
+                "status": "success",
+                "message": "DOCX processed and summarized successfully",
+                "filename": filename,
+                "file_type": extension,
+                "summary_length": summary_length,
+                "summary": summary
+            }), 200
+
+        # Should never reach here
+        return jsonify({
+            "status": "error",
+            "message": "Unable to process this file type."
+        }), 400
+
+    # =============================================================
+    # Gemini / AI rate limit
+    # =============================================================
+    except HTTPError as e:
+
+        if e.response is not None:
+
+            if e.response.status_code == 429:
+                return jsonify({
+                    "status": "error",
+                    "message": (
+                        "The AI service is temporarily rate-limited. "
+                        "Please try again in a few minutes."
+                    )
+                }), 429
+
+            if e.response.status_code >= 500:
+                return jsonify({
+                    "status": "error",
+                    "message": (
+                        "The AI service is temporarily unavailable. API may be down or rate-limited. "
+                        "Please try again later."
+                    )
+                }), 502
 
         return jsonify({
-            "status": "success",
-            "message": "PDF processed and summarized successfully",
-            "filename": filename,
-            "file_type": extension,
-            "pages": len(pages),
-            "summary_length": summary_length,
-            "summary": summary
-        }), 200
+            "status": "error",
+            "message": "The AI service could not process your request. API may be down or rate-limited. Please try again later."
+        }), 502
 
-    # DOCX
-    if extension == "docx":
+    # =============================================================
+    # Any unexpected processing error
+    # =============================================================
+    except Exception as e:
 
-        text = extract_text_from_docx(file_path)
-
-        if not text.strip():
-            return jsonify({
-                "status": "error",
-                "message": "No text could be extracted from the DOCX."
-            }), 400
-
-        summary = summarize_text(text, summary_length)
+        print(f"Document processing error: {e}")
 
         return jsonify({
-            "status": "success",
-            "message": "DOCX processed and summarized successfully",
-            "filename": filename,
-            "file_type": extension,
-            "summary_length": summary_length,
-            "summary": summary
-        }), 200
+            "status": "error",
+            "message": (
+                "Unable to process the document right now. "
+                "Please try again."
+            )
+        }), 500
 
-    # IMAGE
-    if extension in {"png", "jpg", "jpeg"}:
+    finally:
 
-        text = extract_text_from_image(file_path)
-
-        if not text.strip():
-            return jsonify({
-                "status": "error",
-                "message": "No text could be extracted from the image."
-            }), 400
-
-        summary = summarize_text(text, summary_length)
-
-        return jsonify({
-            "status": "success",
-            "message": "Image processed and summarized successfully",
-            "filename": filename,
-            "file_type": extension,
-            "summary_length": summary_length,
-            "summary": summary
-        }), 200
-
-    return jsonify({
-        "status": "error",
-        "message": "Unable to process this file type"
-    }), 400
+        # Remove uploaded file after processing
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except Exception as cleanup_error:
+            print(f"File cleanup error: {cleanup_error}")

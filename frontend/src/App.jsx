@@ -37,42 +37,79 @@ function App() {
   };
 
   const generateSummary = async () => {
-    if (!file) {
-      setError("Please select a document first.");
-      return;
-    }
+  if (!file) {
+    setError("Please select a document first.");
+    return;
+  }
 
-    setLoading(true);
-    setError("");
-    setResult(null);
-    setCopied(false);
+  setLoading(true);
+  setError("");
+  setResult(null);
+  setCopied(false);
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("summary_length", summaryLength);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("summary_length", summaryLength);
 
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/documents/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/documents/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
 
-      const data = await response.json();
+    // Read response safely first
+    const contentType = response.headers.get("content-type") || "";
+    let data = null;
 
-      if (!response.ok) {
-        throw new Error(data.message || "Something went wrong.");
+    if (contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      // Render/server returned HTML instead of JSON
+      const text = await response.text();
+
+      console.error("Non-JSON server response:", text);
+
+      if (response.status === 429) {
+        throw new Error(
+          "AI service is temporarily rate-limited. Please try again in a few minutes."
+        );
       }
 
-      setResult(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      if (response.status >= 500) {
+        throw new Error(
+          "The server is temporarily unavailable. Please try again later."
+        );
+      }
+
+      throw new Error(
+        "The server returned an unexpected response. Please try again."
+      );
     }
-  };
+
+    // Handle API errors returned as JSON
+    if (!response.ok) {
+      throw new Error(
+        data?.message || "Unable to process the document."
+      );
+    }
+
+    // Successful response
+    setResult(data);
+
+  } catch (err) {
+    console.error("Document processing error:", err);
+
+    setError(
+      err.message ||
+      "Something went wrong while processing your document."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   const copySummary = async () => {
     if (!result?.summary) return;
@@ -121,7 +158,7 @@ function App() {
 
           {/* Subtext */}
           <p className="mt-6 text-lg md:text-xl text-white/80 max-w-2xl mx-auto font-light leading-relaxed">
-            Upload any PDF, DOCX, or image and let AI extract the key insights in seconds.
+            Upload any PDF or DOCX file and let AI extract the key insights in seconds.
           </p>
 
           {/* Animated Upload Button - moves up/down with blue glow */}
@@ -229,7 +266,7 @@ function App() {
                 <input
                   id="file-upload"
                   type="file"
-                  accept=".pdf,.docx,.png,.jpg,.jpeg"
+                  accept=".pdf,.docx"
                   onChange={handleFileChange}
                   className="hidden"
                 />
