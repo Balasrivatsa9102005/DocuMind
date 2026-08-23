@@ -6,10 +6,15 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-OLLAMA_URL = os.environ["OLLAMA_URL"]
-MODEL_NAME = os.environ["OLLAMA_MODEL"]
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
 
-# Keep chunks reasonably small for the 4096-token context
+OLLAMA_URL = os.getenv("OLLAMA_URL")
+MODEL_NAME = os.getenv("OLLAMA_MODEL")
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+# Keep chunks reasonably small
 CHUNK_SIZE = 1200
 
 
@@ -25,12 +30,55 @@ def ask_ollama(prompt):
     )
 
     response.raise_for_status()
-
     return response.json()["response"]
+
+
+def ask_gemini(prompt):
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+
+    response = requests.post(
+        url,
+        json={
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        },
+        timeout=600
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def ask_ai(prompt):
+    if AI_PROVIDER == "ollama":
+        return ask_ollama(prompt)
+
+    elif AI_PROVIDER == "gemini":
+        return ask_gemini(prompt)
+
+    else:
+        raise ValueError(
+            f"Unsupported AI_PROVIDER: {AI_PROVIDER}. "
+            f"Use 'ollama' or 'gemini'."
+        )
 
 
 def split_text(text, chunk_size=CHUNK_SIZE):
     """Split document text into smaller chunks."""
+
     words = text.split()
     chunks = []
 
@@ -41,6 +89,7 @@ def split_text(text, chunk_size=CHUNK_SIZE):
 
 
 def summarize_chunk(chunk, length):
+
     instructions = {
         "short": """
 Create a concise summary of this section.
@@ -87,10 +136,11 @@ TEXT:
 {chunk}
 """
 
-    return ask_ollama(prompt)
+    return ask_ai(prompt)
 
 
 def summarize_text(text, length="medium"):
+
     if not text or not text.strip():
         return "No text was provided."
 
@@ -101,6 +151,7 @@ def summarize_text(text, length="medium"):
     summaries = []
 
     for i, chunk in enumerate(chunks):
+
         print(f"Summarizing chunk {i + 1}/{len(chunks)}...")
 
         summary = summarize_chunk(chunk, length)
@@ -147,6 +198,7 @@ Therefore, DO NOT:
 Instead, return ONLY:
 
 1. {paragraph_instruction}
+
 2. Then provide exactly {point_count} important points using Markdown bullet points.
 
 Rules:
@@ -166,4 +218,4 @@ SECTION SUMMARIES:
 
     print("Generating final summary...")
 
-    return ask_ollama(final_prompt)
+    return ask_ai(final_prompt)
