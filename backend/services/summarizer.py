@@ -12,35 +12,48 @@ OLLAMA_URL = os.getenv("OLLAMA_URL")
 MODEL_NAME = os.getenv("OLLAMA_MODEL")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 # Keep chunks reasonably small
 CHUNK_SIZE = 1200
 
 
 def ask_ollama(prompt):
+    if not OLLAMA_URL or not MODEL_NAME:
+        raise RuntimeError(
+            "OLLAMA_URL and OLLAMA_MODEL must be configured"
+        )
+
     response = requests.post(
         OLLAMA_URL,
         json={
             "model": MODEL_NAME,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
         },
-        timeout=600
+        timeout=600,
     )
 
     response.raise_for_status()
+
     return response.json()["response"]
 
 
 def ask_gemini(prompt):
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY must be configured")
+
     url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent"
     )
 
     response = requests.post(
         url,
+        headers={
+            "x-goog-api-key": GEMINI_API_KEY,
+            "Content-Type": "application/json",
+        },
         json={
             "contents": [
                 {
@@ -52,14 +65,17 @@ def ask_gemini(prompt):
                 }
             ]
         },
-        timeout=600
+        timeout=600,
     )
 
     response.raise_for_status()
 
     data = response.json()
 
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError):
+        raise RuntimeError("Unexpected response received from Gemini API")
 
 
 def ask_ai(prompt):
@@ -89,7 +105,6 @@ def split_text(text, chunk_size=CHUNK_SIZE):
 
 
 def summarize_chunk(chunk, length):
-
     instructions = {
         "short": """
 Create a concise summary of this section.
@@ -98,7 +113,6 @@ Return:
 - One short paragraph covering the main idea.
 - 3 concise key points as bullet points.
 """,
-
         "medium": """
 Create a clear summary of this section.
 
@@ -106,14 +120,13 @@ Return:
 - One paragraph covering the main ideas.
 - 5 concise key points as bullet points.
 """,
-
         "long": """
 Create a detailed summary of this section.
 
 Return:
 - One or two paragraphs covering the major ideas and important details.
 - 7 concise key points as bullet points.
-"""
+""",
     }
 
     prompt = f"""
@@ -140,7 +153,6 @@ TEXT:
 
 
 def summarize_text(text, length="medium"):
-
     if not text or not text.strip():
         return "No text was provided."
 
@@ -151,11 +163,9 @@ def summarize_text(text, length="medium"):
     summaries = []
 
     for i, chunk in enumerate(chunks):
-
         print(f"Summarizing chunk {i + 1}/{len(chunks)}...")
 
         summary = summarize_chunk(chunk, length)
-
         summaries.append(summary)
 
     # If there is only one chunk, return its summary directly
@@ -170,13 +180,13 @@ def summarize_text(text, length="medium"):
     point_count = {
         "short": 3,
         "medium": 5,
-        "long": 7
+        "long": 7,
     }.get(length, 5)
 
     paragraph_instruction = {
         "short": "Write one concise paragraph.",
         "medium": "Write one or two clear paragraphs.",
-        "long": "Write two or three detailed paragraphs."
+        "long": "Write two or three detailed paragraphs.",
     }.get(length, "Write one or two clear paragraphs.")
 
     final_prompt = f"""
