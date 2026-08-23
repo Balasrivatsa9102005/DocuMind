@@ -1,4 +1,10 @@
-ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg"}
+ALLOWED_EXTENSIONS = {
+    "pdf",
+    "docx",
+    "png",
+    "jpg",
+    "jpeg"
+}
 
 MAX_FILE_SIZE = 16 * 1024 * 1024
 
