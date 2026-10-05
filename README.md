@@ -2,9 +2,7 @@
 
 > **AI-powered document summarization using React, Flask, Gemini, and local Ollama support.**
 
-## 🚀 Live Demo
 
-**Deployed Application:** https://document-summarizer1.onrender.com/
 
 ---
 
