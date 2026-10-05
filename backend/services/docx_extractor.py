@@ -7,12 +7,10 @@ def extract_text_from_docx(file_path):
 
     text_parts = []
 
-    # Paragraphs
     for paragraph in document.paragraphs:
         if paragraph.text.strip():
             text_parts.append(paragraph.text)
 
-    # Tables
     for table in document.tables:
         for row in table.rows:
             row_text = " | ".join(

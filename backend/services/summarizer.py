@@ -15,13 +15,10 @@ MODEL_NAME = os.getenv("OLLAMA_MODEL")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
-# Keep chunks reasonably small
 CHUNK_SIZE = 1200
 
-# Delay between Gemini requests to avoid hitting RPM limits
 CHUNK_REQUEST_DELAY = 2
 
-# Maximum number of retries for temporary Gemini errors
 MAX_GEMINI_RETRIES = 4
 
 
@@ -77,9 +74,6 @@ def ask_gemini(prompt, max_retries=MAX_GEMINI_RETRIES):
                 timeout=600,
             )
 
-            # ---------------------------------------------------------
-            # Gemini rate limit / quota
-            # ---------------------------------------------------------
             if response.status_code == 429:
 
                 if attempt == max_retries - 1:
@@ -88,7 +82,6 @@ def ask_gemini(prompt, max_retries=MAX_GEMINI_RETRIES):
                         "Please wait and try again later."
                     )
 
-                # Gemini may provide Retry-After
                 retry_after = response.headers.get("Retry-After")
 
                 if retry_after:
@@ -97,7 +90,6 @@ def ask_gemini(prompt, max_retries=MAX_GEMINI_RETRIES):
                     except ValueError:
                         wait_time = 10 * (2 ** attempt)
                 else:
-                    # 5, 10, 20, 40 seconds
                     wait_time = 5 * (2 ** attempt)
 
                 print(
@@ -109,9 +101,6 @@ def ask_gemini(prompt, max_retries=MAX_GEMINI_RETRIES):
                 time.sleep(wait_time)
                 continue
 
-            # ---------------------------------------------------------
-            # Temporary server errors
-            # ---------------------------------------------------------
             if response.status_code in (500, 502, 503, 504):
 
                 if attempt == max_retries - 1:
@@ -130,9 +119,6 @@ def ask_gemini(prompt, max_retries=MAX_GEMINI_RETRIES):
                 time.sleep(wait_time)
                 continue
 
-            # ---------------------------------------------------------
-            # Other HTTP errors
-            # ---------------------------------------------------------
             response.raise_for_status()
 
             data = response.json()
@@ -288,8 +274,6 @@ def summarize_text(text, length="medium"):
 
         summaries.append(summary)
 
-        # Small delay between Gemini requests.
-        # This helps avoid RPM rate limits.
         if (
             AI_PROVIDER == "gemini"
             and i < len(chunks) - 1
@@ -301,8 +285,6 @@ def summarize_text(text, length="medium"):
 
             time.sleep(CHUNK_REQUEST_DELAY)
 
-    # If there is only one chunk,
-    # no final Gemini request is necessary.
     if len(summaries) == 1:
         return summaries[0]
 

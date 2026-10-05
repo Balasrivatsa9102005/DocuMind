@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from flask import Blueprint, request, jsonify
-from requests.exceptions import HTTPError
+from flask import Blueprint, jsonify, request
+from requests.exceptions import HTTPError, RequestException
 
-from utils.validators import is_allowed_file, get_file_extension
-from services.pdf_extractor import extract_text_from_pdf
 from services.docx_extractor import extract_text_from_docx
+from services.pdf_extractor import extract_text_from_pdf
+from services.rag_service import answer_question, create_document
 from services.summarizer import summarize_text
+from utils.validators import get_file_extension
 
 
 document_bp = Blueprint("document", __name__)
@@ -14,10 +15,47 @@ document_bp = Blueprint("document", __name__)
 UPLOAD_FOLDER = Path(__file__).resolve().parent.parent / "uploads"
 
 
+@document_bp.route("/api/documents/ask", methods=["POST"])
+def ask_document_question():
+    data = request.get_json(silent=True) or {}
+    document_id = data.get("document_id")
+    question = data.get("question", "").strip()
+
+    if not document_id or not question:
+        return jsonify({
+            "status": "error",
+            "message": "document_id and question are required"
+        }), 400
+
+    try:
+        result = answer_question(document_id, question)
+        return jsonify({
+            "status": "success",
+            "document_id": document_id,
+            "question": question,
+            **result
+        }), 200
+    except ValueError as error:
+        return jsonify({
+            "status": "error",
+            "message": str(error)
+        }), 404
+    except (RequestException, RuntimeError) as error:
+        print(f"Question service error: {error}")
+        return jsonify({
+            "status": "error",
+            "message": "The question service is unavailable. Check the configured AI provider and try again."
+        }), 502
+    except Exception as error:
+        print(f"Question processing error: {error}")
+        return jsonify({
+            "status": "error",
+            "message": "Unable to process the question right now."
+        }), 500
+
+
 @document_bp.route("/api/documents/upload", methods=["POST"])
 def upload_document():
-
-    # Check file
     if "file" not in request.files:
         return jsonify({
             "status": "error",
@@ -26,13 +64,12 @@ def upload_document():
 
     file = request.files["file"]
 
-    if file.filename == "":
+    if not file.filename:
         return jsonify({
             "status": "error",
             "message": "No file selected"
         }), 400
 
-    # Only PDF and DOCX are supported on deployment
     filename = Path(file.filename).name
     extension = get_file_extension(filename)
 
@@ -42,140 +79,96 @@ def upload_document():
             "message": "Unsupported file type. Please upload a PDF or DOCX file."
         }), 400
 
-    # Summary length
     summary_length = request.form.get("summary_length", "medium")
 
-    allowed_lengths = {"short", "medium", "long"}
-
-    if summary_length not in allowed_lengths:
+    if summary_length not in {"short", "medium", "long"}:
         return jsonify({
             "status": "error",
             "message": "Invalid summary length. Choose short, medium, or long."
         }), 400
 
-    # Create upload directory
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-
     file_path = UPLOAD_FOLDER / filename
 
     try:
-        # Save uploaded file
         file.save(file_path)
 
-        # =========================================================
-        # PDF
-        # =========================================================
+        pages = None
+
         if extension == "pdf":
-
             pages = extract_text_from_pdf(file_path)
-
-            text = "\n\n".join(
-                page["text"] for page in pages
-            )
-
-            if not text.strip():
-                return jsonify({
-                    "status": "error",
-                    "message": "No text could be extracted from the PDF."
-                }), 400
-
-            # Generate summary
-            summary = summarize_text(
-                text,
-                summary_length
-            )
-
-            return jsonify({
-                "status": "success",
-                "message": "PDF processed and summarized successfully",
-                "filename": filename,
-                "file_type": extension,
-                "pages": len(pages),
-                "summary_length": summary_length,
-                "summary": summary
-            }), 200
-
-        # =========================================================
-        # DOCX
-        # =========================================================
-        if extension == "docx":
-
+            text = "\n\n".join(page["text"] for page in pages)
+        else:
             text = extract_text_from_docx(file_path)
 
-            if not text.strip():
-                return jsonify({
-                    "status": "error",
-                    "message": "No text could be extracted from the DOCX."
-                }), 400
-
-            # Generate summary
-            summary = summarize_text(
-                text,
-                summary_length
-            )
-
+        if not text.strip():
             return jsonify({
-                "status": "success",
-                "message": "DOCX processed and summarized successfully",
-                "filename": filename,
-                "file_type": extension,
-                "summary_length": summary_length,
-                "summary": summary
-            }), 200
+                "status": "error",
+                "message": f"No text could be extracted from the {extension.upper()}."
+            }), 400
 
-        # Should never reach here
-        return jsonify({
-            "status": "error",
-            "message": "Unable to process this file type."
-        }), 400
+        document_id, chunk_count = create_document(
+            text=text,
+            pages=pages
+        )
 
-    # =============================================================
-    # Gemini / AI rate limit
-    # =============================================================
-    except HTTPError as e:
+        summary = summarize_text(text, summary_length)
+        question = request.form.get("question", "").strip()
+        sources = []
+        answer = None
 
-        if e.response is not None:
+        if question:
+            rag_response = answer_question(document_id, question)
+            answer = rag_response["answer"]
+            sources = rag_response["sources"]
 
-            if e.response.status_code == 429:
+        response = {
+            "status": "success",
+            "message": f"{extension.upper()} processed and summarized successfully",
+            "filename": filename,
+            "file_type": extension,
+            "summary_length": summary_length,
+            "summary": summary,
+            "chunk_count": chunk_count,
+            "sources": sources,
+            "document_id": document_id
+        }
+
+        if pages is not None:
+            response["pages"] = len(pages)
+
+        if answer is not None:
+            response["answer"] = answer
+
+        return jsonify(response), 200
+
+    except HTTPError as error:
+        if error.response is not None:
+            if error.response.status_code == 429:
                 return jsonify({
                     "status": "error",
-                    "message": (
-                        "The AI service is temporarily rate-limited. "
-                        "Please try again in a few minutes."
-                    )
+                    "message": "The AI service is temporarily rate-limited. Please try again in a few minutes."
                 }), 429
 
-            if e.response.status_code >= 500:
+            if error.response.status_code >= 500:
                 return jsonify({
                     "status": "error",
-                    "message": (
-                        "The AI service is temporarily unavailable. The AI service has temporarily reached its usage limit.Please try again later."
-                    )
+                    "message": "The AI service is temporarily unavailable. Please try again later."
                 }), 502
 
         return jsonify({
             "status": "error",
-            "message": "The AI service could not process your request. API may be down or rate-limited. Please try again later."
+            "message": "The AI service could not process your request. Please try again later."
         }), 502
 
-    # =============================================================
-    # Any unexpected processing error
-    # =============================================================
-    except Exception as e:
-
-        print(f"Document processing error: {e}")
-
+    except Exception as error:
+        print(f"Document processing error: {error}")
         return jsonify({
             "status": "error",
-            "message": (
-                "Unable to process the document right now. "
-                "The AI service has temporarily reached its usage limit.Please try again later."
-            )
+            "message": "Unable to process the document right now. Please try again later."
         }), 500
 
     finally:
-
-        # Remove uploaded file after processing
         try:
             if file_path.exists():
                 file_path.unlink()

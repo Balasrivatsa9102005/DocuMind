@@ -12,12 +12,60 @@ html {
 
 body {
   margin: 0;
-  background: linear-gradient(to bottom, #000000 0%, #020617 38%, #082f63 100%);
-  color: #f8fafc;
-  font-family: Arial, Helvetica, sans-serif;
+  background: #07090b;
+  color: #e8eef0;
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
 }
 
 #root {
   min-height: 100vh;
-  background: linear-gradient(to bottom, #000000 0%, #020617 38%, #082f63 100%);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(35, 99, 93, 0.18), transparent 32rem),
+    #07090b;
+}
+
+.bg-\[\#f5f7f3\] {
+  background-color: #07090b !important;
+}
+
+.bg-white,
+.bg-white\/80,
+.bg-white\/55 {
+  background-color: #111519 !important;
+}
+
+.bg-\[\#f6faf7\],
+.bg-\[\#edf7f2\],
+.bg-\[\#e8f0ee\],
+.bg-\[\#dceee8\],
+.bg-slate-50 {
+  background-color: #151d20 !important;
+}
+
+.text-slate-900,
+.text-slate-800,
+.text-slate-700 {
+  color: #e8eef0 !important;
+}
+
+.text-slate-600,
+.text-slate-500 {
+  color: #a8b4b9 !important;
+}
+
+.text-slate-400 {
+  color: #77858b !important;
+}
+
+.border-slate-200,
+.border-slate-200\/80,
+.border-slate-100 {
+  border-color: #263136 !important;
+}
+
+.prose-slate {
+  --tw-prose-body: #a8b4b9;
+  --tw-prose-headings: #e8eef0;
+  --tw-prose-bold: #e8eef0;
+  --tw-prose-bullets: #6caea1;
 }
